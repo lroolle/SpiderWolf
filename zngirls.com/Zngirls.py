@@ -178,12 +178,15 @@ def is_nested(nested_lst):
 
 
 def unnest(nested_lst):
-    while is_nested(nested_lst):
+    while is_nested(nested_lst):  # backward to pop the list/set/tuple item in the nested list
         for i in range(len(nested_lst)-1, -1,-1):
             if not isinstance(nested_lst[i], (list, set, tuple)):
                 continue
-            for j in nested_lst[i]:
-                nested_lst.append(j)
+            for j in nested_lst[i]:     # if the item in nested list is a list/set/tuple,
+                                        # get the element in the item,
+                                        # and append to the list
+                if j not in nested_lst:
+                    nested_lst.append(j)
             nested_lst.pop(i)
     return nested_lst
 
@@ -194,19 +197,17 @@ if __name__ == '__main__':
         sdt_page = pool.map(get_sdt, post_pages)
 
         sdt_pages = unnest(sdt_page)
-        print('|>>>>>>> %d Albums to download >>>>>>>' % len(sdt_pages))
-        #except Exception as e:
-        #   print('>>> Get sdt page error:', e)
+        print('| %d Albums to download' % len(sdt_pages))
         count = 0
         for sdt_page in sdt_pages:
             img_urls_set = []
             title, pages = get_pages(sdt_page)
             img_urls = pool.map(get_imgurl, pages)
+            
             img_urls_set = unnest(img_urls)
             count += 1
             print('| Album %d/%d: ' % (count, len(sdt_pages)), title)
             print('|>>>>>>> %d images to download >>>>>>>>>>' % len(img_urls_set))
-            downloaded_img_num = []
             downloaded_img_num = pool.map(partial(save_img, tt=title), img_urls_set)
             with open(SAVED, 'r+') as pp:
                 pp.read()
