@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-'''
-    First You Would Like to Visit zngirls.com
-    Choose Your Favorite Girls' Albums
-    Then Add the Album Url to 'alb_page'
-'''
-
-
 import requests
 import os
 import re
@@ -16,83 +9,96 @@ from bs4 import BeautifulSoup as bs
 from functools import partial
 
 
-headers = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) '
+HEADERS = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) '
+                         'AppleWebKit/537.36 (KHTML, like Gecko) '
                          'Chrome/47.0.2526.106 Safari/537.36'}
-root_url = 'http://www.zngirls.com'
-page_pattern = r'^http://www.zngirls.com/g/\d+/\d+'
-alb_pattern = r'^/g/\d+'
+ROOT_URL = 'http://www.zngirls.com'
+# Max retries
+MAX_RETRIES = 3
 
-# Save Downloaded albums url to avoid download again
-saved = '.\\saved'
+# File for keeping saved albums url to avoid download again
+SAVED = '.\\saved'
+# Directory to save image
+IMG_DIR = '.\\Images\\'
 
-# Albums to download
+# Albums to download>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  =_=
 # 'http://www.zngirls.com/girl/\d+/album/'
-alb_pages = ['http://www.zngirls.com/girl/19705/album/',
-             ]
+alb_pages = [
+            ]
+
 # Gallery to download
 # 'http://www.zngirls.com/gallery/(gallery name).html'
 # Gallery name, for example:
-gallery_name = ['dachidu'
+gallery_names = ['dachidu'
                 ]
-# For example in gallery 'dachidu', 25 pages in total, you want the first 10 pages
-default_gallery_pagenum = 10
+# For example in gallery 'dachidu', 25 pages in total, you want the first 10 pages.
+gal_pgnum = 1
 
 
 def request(url):
-    print('| Requesting: %s ' % url)
-    try:
-        response = requests.get(url, auth=('user', 'pass'), headers=headers)
-        return response
-    except Exception as e:
-        print('>>> Request Error:', e)
+    if url is None:
+        print('>>> No url to request !~')
+        return
+    else:
+        print('| Requesting: %s ' % url)
+        tries = 0
+        while tries < MAX_RETRIES:
+            try:
+                response = requests.get(url, auth=('user', 'pass'), headers=HEADERS)
+                return response
+            except Exception as e:
+                print('>>> Request Error:', e)
+                tries += 1
+                print('| Request retrying %d/%d >>> %s' % (tries, MAX_RETRIES, url))
 
-
-def url_re(pattern):
-    return re.compile(pattern)
 
 # get start pages of each albums
 def get_sdt(alb_page):
     sdt_pages = set()
     r = request(alb_page)
-    if not r.status_code == 200:
-        print('>>> Request album page %s failed'%alb_page)
+    if r is None or r.status_code != 200:
+        print('>>> Request album page %s failed' % alb_page)
         return
 
-    r_text = r.text
-    soup = bs(r_text, 'html.parser')
-    # <div id="photo_list">
-    soup_albs = soup.find('div', id="photo_list")
+    soup = bs(r.text, 'html.parser')
+    # <div class_="post_entry">
+    soup_alb = soup.find('div', class_="post_entry")
     # <a href="/g/17781/" class="galleryli_link">
     # <a class="igalleryli_link" href="/g/16880/">\
-    soup_alb = soup_albs.find_all('a', href=url_re(alb_pattern))
+    soup_albs = soup_alb.find_all('a', href=re.compile(r'^/g/\d+/'))
 
-    if not os.path.exists(saved):
-        open(saved, 'w')
-    with open(saved, 'r') as pp:
-        pagesr = pp.read()
-        pages = re.compile(r'http://www.zngirls.com/g/\d+/').findall(pagesr)
+    if not os.path.exists(SAVED):
+        open(SAVED, 'w')
+    with open(SAVED, 'r') as pp:
+        pages_saved = pp.read()
+        pages = re.compile(r'http://www.zngirls.com/g/\d+/').findall(pages_saved)
         # print(pages)
-    for s in soup_alb:
-        sdt_url = root_url + s.get('href')
+
+    for s in soup_albs:
+        sdt_url = ROOT_URL + s.get('href')
         if sdt_url not in pages:
             sdt_pages.add(sdt_url)
         else:
-            print('| Exists:', sdt_url)
+            print('| Album Existed: ', sdt_url)
     return sdt_pages
 
 
 # get all pages of each albums
 def get_pages(sdt_page):
-    pages = list()
+    pages = []
     r = request(sdt_page)
-    if not r.status_code == 200:
-        print('>>> Request start page %s failed'%sdt_page)
+    if r is None or r.status_code != 200:
+        print('>>> Request start page %s failed' % sdt_page)
         return
-    r_text = r.text
-    soup = bs(r_text, 'html.parser')
+
+    soup = bs(r.text, 'html.parser')
     # <span style="color: #DB0909">
+
+    title_num = re.sub(r'\D+', '', sdt_page)
+    title_text = soup.find('title').get_text()
+    title = title_text + '_' + title_num
+
     img_num = soup.find('span', style="color: #DB0909").get_text()
-    title = soup.find('title').get_text()
     img_num = int(re.compile(r'\d+').findall(img_num)[0])
     if img_num % 5 == 0:
         page_num = int(img_num/5)
@@ -104,7 +110,7 @@ def get_pages(sdt_page):
 
 
 # get all image url of the album on every page
-def get_img(page):
+def get_imgurl(page):
     img_urls = list()
     r = request(page)
     if not r.status_code == 200:
@@ -120,21 +126,31 @@ def get_img(page):
     return img_urls
 
 
-def download_img(img_url, title):
+def download_img(img_url):
     print('| Downloading: ', img_url)
-    reponse = requests.get(img_url, auth=('user', 'pass'), headers=headers, stream=True, timeout=120)
-    if not reponse.status_code == 200:
-        print('>>> Download image %s failed' % img_url)
+    retries = 0
+    while retries < MAX_RETRIES:
+        try:
+            response = requests.get(img_url, auth=('user', 'pass'), headers=HEADERS, stream=True, timeout=120)
+            return response
+        except Exception as e:
+            print('>>> Download image %s failed' % img_url, e)
+            retries += 1
+            print('| Download retrying %d/%d >>> %s' % (retries, MAX_RETRIES, img_url))
+
+
+def save_img(img_url, tt):
+    r = download_img(img_url)
+    if r is None or r.status_code != 200:
+        print('>>> Save image failed %s' % img_url)
         return 0
-    image = reponse.content
-    image_name = re.sub(r'^http://\w+.zngirls.com/gallery/\d+/\d+/', '', img_url)
-    des_dir = '.\\Images\\'
-    if not os.path.exists(des_dir):
-        os.mkdir(des_dir)
-    if not os.path.exists(des_dir+title):
-        os.mkdir(des_dir+title)
-    with open(des_dir+title+'\\'+image_name, 'wb') as img:
-            img.write(image)
+    image_num = re.sub(r'^http://\w+.zngirls.com/gallery/\d+/\d+/', '', img_url)
+    if not os.path.exists(IMG_DIR):
+        os.mkdir(IMG_DIR)
+    if not os.path.exists(IMG_DIR+tt):
+        os.mkdir(IMG_DIR + tt)
+    with open(IMG_DIR+tt + '\\'+image_num, 'wb') as img:
+            img.write(r.content)
     return 1
 
 
@@ -144,48 +160,59 @@ def get_gallerypages(gn, dpn):
         gal_pages.append('http://www.zngirls.com/gallery/'+gn+'/'+str(i)+'.html')
     return gal_pages
 
-if __name__ == '__main__':
 
+def get_post_pages(gallery_name):
+    post_pages = alb_pages
     for gn in gallery_name:
-        gal_pages = get_gallerypages(gn, default_gallery_pagenum)
+        gal_pages = get_gallerypages(gn, gal_pgnum)
         for g in gal_pages:
-            alb_pages.append(g)
+            post_pages.append(g)
+    return post_pages
 
+
+def is_nested(nested_lst):
+    for i in nested_lst:
+        if isinstance(i, (list, set, tuple)):
+            return True
+    return False
+
+
+def unnest(nested_lst):
+    while is_nested(nested_lst):
+        for i in range(len(nested_lst)-1, -1,-1):
+            if not isinstance(nested_lst[i], (list, set, tuple)):
+                continue
+            for j in nested_lst[i]:
+                nested_lst.append(j)
+            nested_lst.pop(i)
+    return nested_lst
+
+
+if __name__ == '__main__':
+    post_pages = get_post_pages(gallery_names)
     with Pool(4) as pool:  # Pool(8) causes too much requests fail
-        sdt_pages = set()
-        try:
-            sdt_page = pool.map(get_sdt, alb_pages)
-            for i in sdt_page:
-                for j in i:
-                    sdt_pages.add(j)
-            print('| %d Albums to download' % len(sdt_pages))
-        except Exception as e:
-            print('>>> Get sdt page error:', e)
+        sdt_page = pool.map(get_sdt, post_pages)
+
+        sdt_pages = unnest(sdt_page)
+        print('|>>>>>>> %d Albums to download >>>>>>>' % len(sdt_pages))
+        #except Exception as e:
+        #   print('>>> Get sdt page error:', e)
         count = 0
         for sdt_page in sdt_pages:
-            try:
-                img_urlss = set()
-                title, pages = get_pages(sdt_page)
-                count += 1
-                img_urls = pool.map(get_img, pages)
-                for i in img_urls:
-                    for j in i:
-                        img_urlss.add(j)
-
-                print('| Album %d/%d: ' % (count, len(sdt_pages)), title)
-                print('|> %d images to download >>>>>>>'%len(img_urlss))
-                downloaded_img = []
-                downloaded_img_bundle = pool.map(partial(download_img, title=title), img_urlss)
-                for i in downloaded_img_bundle:
-                    for j in i:
-                        downloaded_img.append(j)
-                with open(saved, 'r+') as pp:
-                    pp.read()
-                    pp.write(sdt_page+'\n')
-                print('|> Saved %d Images' % sum(downloaded_img))
-                if count == 1:
-                    print('oOkailubasaonian!!')
-            except Exception as e:
-                print('>>>Error ', e)
+            img_urls_set = []
+            title, pages = get_pages(sdt_page)
+            img_urls = pool.map(get_imgurl, pages)
+            img_urls_set = unnest(img_urls)
+            count += 1
+            print('| Album %d/%d: ' % (count, len(sdt_pages)), title)
+            print('|>>>>>>> %d images to download >>>>>>>>>>' % len(img_urls_set))
+            downloaded_img_num = []
+            downloaded_img_num = pool.map(partial(save_img, tt=title), img_urls_set)
+            with open(SAVED, 'r+') as pp:
+                pp.read()
+                pp.write(sdt_page+'\n')
+            print('|> Saved %d Images' % sum(downloaded_img_num))
+            if count == 1:
+                print('oOkailubasaonian!!')
 
     print('|> Downloaded %d Albums' % len(sdt_pages))

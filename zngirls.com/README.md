@@ -33,6 +33,6 @@ alb_pages = ['http://www.zngirls.com/girl/19705/album/',
 
 You can also visit [Gallerys](http://www.zngirls.com/gallery/)
 
-Choose your **Gallery** and set the `default_gallery_pagenum`
+Choose your **Gallery** and set the `gallery_pagenum`
 
 Run the script `python zngirls.py` to start download
